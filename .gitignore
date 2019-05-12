@@ -115,3 +115,6 @@ dmypy.json
 
 # Token
 *.tkn
+
+# Database secret
+secret_db.py
