@@ -43,17 +43,7 @@ class Helena:
             print('----------------------------+\n')
 
 
-                # DATABASE COMMANDS
-
-
-        def get_show_id(name: str) -> int:
-            with self.db.cursor() as cursor:
-                sql = "SELECT show_id FROM shows WHERE name = %s"
-                cursor.execute(sql, (name))
-                show_id = str(cursor.fetchall())
-                return show_id[13:-2]
-
-
+# DATABASE COMMANDS
         @self.client.command(name='add',
                             description='Adds a new project to the database',
                             brief='Add a new project',
@@ -64,20 +54,19 @@ class Helena:
                     with self.db.cursor() as cursor:
                         sql = "INSERT INTO shows (name, total_episodes) VALUES (%s, %s)"
                         cursor.execute(sql, (name, total_episodes))
-                        print(f"[+] Added {name} to kaleido_db.shows")
+                        print(f"[+] Added {name} to {DB_NAME}")
                         sql = "SELECT show_id FROM shows"
                         cursor.execute(sql)
                         show_id = get_show_id(name)
-                        current_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                        add_to_status_sql = "INSERT INTO status (show_id, last_update) VALUES (%s, %s)"
-                        cursor.execute(add_to_status_sql, (show_id, current_date))
-                        print(f"[+] Added {name} to kaleido_db.status\n")
+                        current_date = get_current_date()
+                        sql = "INSERT INTO status (show_id, last_update) VALUES (%s, %s)"
+                        cursor.execute(sql, (show_id, current_date))
+                        print(f"[+] Added {name} to {DB_NAME}\n")
                         await ctx.channel.send(f'*"{name}"* ({total_episodes} episodes) has been added to the database')
                     self.db.commit()
                 except Exception as e:
-                    print(f"[-] Failed to add {name} to the database.\n[-] {e}\n")
-                    await ctx.channel.send(f'Error adding *"{name}"* to the database.\n{e}')
+                    print(f"[-] Failed to add {name} to {DB_NAME}\n[-] {e}\n")
+                    await ctx.channel.send(f'Error adding *"{name}"* to the database\n{e}')
             else:
                 await ctx.channel.send('You do not have permission to add new projects!')
 
@@ -88,16 +77,21 @@ class Helena:
                             aliases=['done'])
         async def update(ctx, name: str, role: str):
             if f'{str(ctx.author.id)}' in valid_users:
-                try:
-                    with self.db.cursor() as cursor:
-                        show_id = int(get_show_id(name))
-                        cursor.execute(f"UPDATE status SET {role} = 1 WHERE show_id = {show_id}")
-                        print(f"[+] {role} for {name} has been updated\n")
-                        await ctx.channel.send(f"*{name}* has been updated with {role}")
-                    self.db.commit()
-                except Exception as e:
-                    print(f"[-] Failed to update '{name}' with '{role}' in the database.\n[-] {e}\n")
-                    await ctx.channel.send(f'Error updating *{name}* in the database.\n{e}')
+                if role not in ['TL', 'TLC', 'ENC', 'ED', 'TM', 'TS', 'QC']:
+                    print(f"[-] '{role}' could not be found in the role list")
+                    await ctx.channel.send(f"*'{role}'* is not in the role list!")
+                else:
+                    try:
+                        with self.db.cursor() as cursor:
+                            show_id = get_show_id(name)
+                            current_date = get_current_date()
+                            cursor.execute(f"UPDATE status ({role}, last_update) VALUES (1, '{current_date}') WHERE show_id = {show_id}")
+                            print(f"[+] {role} for {name} has been updated\n")
+                            await ctx.channel.send(f"*{name}* has been updated with {role}")
+                        self.db.commit()
+                    except Exception as e:
+                        print(f"[-] Failed to update '{name}' with '{role}' in the database\n[-] {e}\n")
+                        await ctx.channel.send(f'Error updating *{name}* in the database\n{e}')
             else:
                 await ctx.channel.send('You do not have permission to update this show!')
 
@@ -112,7 +106,7 @@ class Helena:
                     with self.db.cursor() as cursor:
                         show_id = get_show_id(name)
                         sql = "DELETE FROM status WHERE show_id = %s"
-                        cursor.execute(sql, (name))
+                        cursor.execute(sql, (show_id))
                         print(f"[-] Removed {name} from kaleido_db.status")
                         sql = "DELETE FROM shows WHERE show_id = %s"
                         cursor.execute(sql, (name))
@@ -120,8 +114,8 @@ class Helena:
                         await ctx.channel.send(f"*{name}* was removed from the database")
                     self.db.commit()
                 except Exception as e:
-                    print(f"[-] Failed to remove {name} from the database.\n[-] {e}\n")
-                    await ctx.channel.send(f'Error removing *"{name}"* from the database.\n{e}')
+                    print(f"[-] Failed to remove {name} from the database\n[-] {e}\n")
+                    await ctx.channel.send(f'Error removing *"{name}"* from the database\n{e}')
             else:
                 await ctx.channel.send('You do not have permission to delete a project!')
 
@@ -139,7 +133,7 @@ class Helena:
                     self.db.commit()
                 except Exception as e:
                     print(f"[-] Failed to add {alt_name} to {name} in the database.\n[-] {e}\n")
-                    await ctx.channel.send(f'Error adding *"{alt_name}"* to {name} in the database.\n{e}')
+                    await ctx.channel.send(f"Error adding *'{alt_name}'* to *{name}* in the database.\n{e}")
             else:
                 await ctx.channel.send('You do not have permission to add alternative names!')
 
@@ -150,6 +144,7 @@ class Helena:
                             aliases=['blame'])
         async def progress(ctx, show_name: str):
             return
+
 
         @self.client.command(name='list',
                             description='Lists all projects in the database',
@@ -169,7 +164,30 @@ class Helena:
                 await ctx.channel.send(f'Failed to print a list.\n{e}')
 
 
-                # MISCELLANEOUS COMMANDS
+        @self.client.command(name='release',
+                            description='Release the latest episode for a given show',
+                            brief='Release an episode')
+        async def release(ctx, name):
+            if f'{str(ctx.author.id)}' in valid_users:
+                try:
+                    with self.db.cursor() as cursor:
+                        show_id = get_show_id(name)
+                        print(show_id)
+                        cursor.execute(f"UPDATE status SET released = 1 WHERE show_id = {show_id}")
+                        latest_ep_id = get_latest_ep_id(name)
+                        print(latest_ep_id)
+                        print(f"[+] {name} #{latest_ep_id} has been released!")
+                        cursor.execute(f"INSERT INTO status (ep_id) VALUES {latest_ep_id+1} + 1")
+                        print(f"[+] {name} #{latest_ep_id+1} has been added to the database")
+                        await ctx.channel.send(f"*{name} #{latest_ep_id}* has been released!")
+                except Exception as e:
+                    print(f"[-] Failed to set {name} to 'released' in the database\n[-] {e}\n")
+                    await ctx.channel.send(f'Error releasing {name}\n{e}')
+            else:
+                await ctx.channel.send('You do not have permission to release this episode!')
+
+
+# MISCELLANEOUS COMMANDS
         @self.client.command(name='kill',
                             description='Command to kill the bot, since sometimes it takes too long to respond when forcibly stopping it from the terminal.' +\
                                 'You can use this to instantly kill it instead. If she lets you, that is!',
@@ -178,10 +196,33 @@ class Helena:
         async def kill(ctx):
             if f'{str(ctx.author.id)}' in valid_users:
                 await ctx.channel.send(f'*{self.client.user.name} was slain by {str(ctx.author)[:-5]}*')
-                print(f'\n{self.client.user.name} was terminated by {str(ctx.author)}.')
+                print(f'\n[*] {self.client.user.name} was terminated by {str(ctx.author)}.')
                 await self.client.close()
             else:
                 await ctx.channel.send(f'Nice try, {str(ctx.author)[:-5]}')
+
+
+# Helper functions
+        def get_show_id(name: str) -> int:
+            with self.db.cursor() as cursor:
+                sql = "SELECT show_id FROM shows WHERE name = %s"
+                cursor.execute(sql, (name))
+                show_id = str(cursor.fetchall())
+                return show_id[13:-2]
+
+
+        def get_latest_ep_id(name: str) -> int:
+            with self.db.cursor() as cursor:
+                show_id = get_show_id(name)
+                sql = "SELECT ep_id FROM status WHERE show_id=(SELECT MAX(id) FROM status)"
+                cursor.execute(sql, (name))
+                ep_id = str(cursor.fetchone())
+                print(ep_id)
+                return ep_id
+
+
+        def get_current_date():
+            return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 if __name__ == '__main__':
