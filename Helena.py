@@ -4,14 +4,23 @@ from permissions import valid_users
 from settings import token, prefix
 import pymysql.cursors
 from secret_db import *
+import argparse
 import datetime
 
 # https://discordapp.com/oauth2/authorize?client_id=548004481552613378&scope=bot&permissions=76864
 
-# Connect to database
+# TO-DO:
+# Add proper logging options - Loud, Default, Quiet?
+parser = argparse.ArgumentParser()
+parser.add_argument("-V", "--verbose",
+                    help="verbose logging", action="store_true")
+args = parser.parse_args()
+
 
 print(f'\n----------------------------+\n[*] Starting up the bot')
 
+
+# Connect to database
 def connect_db():
     connection = pymysql.connect(host=DB_HOST,
                                 user=DB_USER,
